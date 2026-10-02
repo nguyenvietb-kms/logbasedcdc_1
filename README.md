@@ -1,5 +1,6 @@
 # Architecture
-<img width="701" height="362" alt="image" src="https://github.com/user-attachments/assets/6264dbb9-c27f-460e-be9f-a78a858062ca" />
+
+![image](https://github.com/user-attachments/assets/6264dbb9-c27f-460e-be9f-a78a858062ca)
 
 # Steps to build the data streaming flow
 
@@ -97,4 +98,4 @@ This command launches Kafka Connect in standalone mode inside a running Docker c
 
 ## Check Snowflake
 
-<img width="707" height="164" alt="image" src="https://github.com/user-attachments/assets/b6b43c28-08d4-4a24-8f08-9781af8f7bbb" />
+![image](https://github.com/user-attachments/assets/b6b43c28-08d4-4a24-8f08-9781af8f7bbb)
