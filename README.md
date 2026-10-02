@@ -1,261 +1,100 @@
-# Context 1: only CDC
+# Architecture
+<img width="701" height="362" alt="image" src="https://github.com/user-attachments/assets/6264dbb9-c27f-460e-be9f-a78a858062ca" />
 
-- We have a Users table (fields: user_id, first_name, last_name) in a source PostgreSQL database.
-- We have a Wages table (fields: user_id, wage) in a soure PostgreSQL database.
-- We have a Users table (fields: user_id, first_name, last_name) in a sink PostgreSQL database.
-- We have a Wages table (fields: user_id, wage) in a sink PostgreSQL database.
-- We want to synchronize the Change Data Capture (CDC) to the tables Users and Wages in a sink PostgreSQL database when the tables Users and Wages are inserted, updated, or deleted in the source PostgreSQL database.
-- We expect this synchonization happenning in near-real-time.
+# Steps to build the data streaming flow
 
-![alt text](https://github.com/bao2902/logbasedcdc/blob/main/LogBasedCDC_3.png)
+## Create configuration files
 
-![alt text](https://github.com/bao2902/logbasedcdc/blob/main/LogBasedCDC_1.PNG)
+* Create "config\connect-standalone.properties"
+* Create "config\connect-postgres-source.properties"
+* Create "config\connect-snowflake-sink.properties"
 
-# Context 2: CDC + transform
+## Create "docker-compose.yml"
 
-- We have a Users table (fields: user_id, first_name, last_name) in a source PostgreSQL database.
-- We have a Wages table (fields: user_id, wage) in a soure PostgreSQL database.
-- We have a User_Wages table (fields: user_id, full_name, wage) in a sink PostgreSQL database.
-- We want to synchronize the Change Data Capture (CDC) to the table User_Wages in a sink PostgreSQL database when the tables Users and Wages are inserted, updated, or deleted in the source PostgreSQL database.
-- This synchonization includes the data tranforming as following:
-+ User_Wages.user_id = Users.user_id
-+ User_Wages.full_name = Users.first_name + ' ' + Users.last_name
-+ User_Wages.wage = Wages.wage
-- We expect this synchonization happenning in near-real-time.
+## Create "debezium-connector-postgres-2.5.4" plugin
 
-![alt text](https://github.com/bao2902/logbasedcdc/blob/main/LogBasedCDC_4.png)
+Step 1: Remove Old Debezium JARs.
 
-![alt text](https://github.com/bao2902/logbasedcdc/blob/main/LogBasedCDC_2.PNG)
+> rm -rf plugins/debezium-connector-postgres/*
 
+Step 2: Download the Debezium 2.5.4.Final Archive.
 
-# Environment
+> wget https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.5.4.Final/debezium-connector-postgres-2.5.4.Final-plugin.tar.gz
 
-"docker-compose.yml" includes the following containers:
-- Zookeeper
-- Kafka
-- kSQL database server
-- kSQL database client
-- Source PostgreSQL database
-- Sink PostgreSQL database
+Step 3: Extract directly into your plugins Directory.
 
-"config" folder includes the following configurations:
-- Source PostgreSQL config for Users and Wages tables (connect-postgres-source.properties)
-- Sink PostgreSQL config for Users table (connect-postgres-sink-users.properties)
-- Sink PostgreSQL config for Wages table (connect-postgres-sink-wages.properties)
-- Sink PostgreSQL config for User_Wages table (connect-postgres-sink-user-wages.properties)
+> tar -xzf debezium-connector-postgres-2.5.4.Final-plugin.tar.gz -C plugins/
 
-"plugins" folder includes the following plugins:
-- Debezium PostgreSQL source connector (debezium-connector-postgres)
-- Debezium JDBC sink connector (confluentinc-kafka-connect-jdbc)
+Step 4: Clean up the Downloaded Archive.
 
+> rm debezium-connector-postgres-2.5.4.Final-plugin.tar.gz
 
-# Steps to start containers:
+Step 5: Verify the Extracted Files.
 
-1. Build Dockerfile
+> ls -l plugins/debezium-connector-postgres/
 
-sudo docker build -t nashtech/kafka .
+## Create Docker containers
 
-2. Start Docker Compose
+Note: Run the following commands on WSL/Ubuntu.
 
-sudo docker-compose up -d
+Step 1: Launches or switches into your Ubuntu Linux environment within Windows Subsystem for Linux (WSL).
 
+> ubuntu
 
-# Steps to create source PosgreeSQL tables:
+Step 2: Changes your working directory to the specified folder containing your Docker setup files.
 
-1. Access source PostgreSQL container
+> cd docker-project/logbasedcdc
 
-sudo docker exec -it  postgres-source /bin/bash
+Step 3: Stops and removes all running containers, networks, and persistent volume data created by Docker Compose using administrator privileges.
 
-psql -U postgres
+> sudo docker-compose down -v
 
-2. Create Users table and insert 1 record
+Step 4: Builds, creates, and starts all defined Docker containers in background (detached) mode.
 
-CREATE TABLE users(user_id INTEGER, first_name VARCHAR(200), last_name VARCHAR(200), PRIMARY KEY (user_id));
+> sudo docker-compose up -d
 
-INSERT INTO users VALUES(1, 'first 1', 'last 1');
+Step 5: Lists all currently active and running Docker containers along with their status and mapped ports.
 
-3. Create Wages table and insert 1 record
+> sudo docker ps
 
-CREATE TABLE wages(user_id INTEGER, wage integer, PRIMARY KEY (user_id));
+## Create "users" table on PostgreSQL
 
-INSERT INTO wages VALUES(1, '1000');
+Step 1: Opens an interactive Linux command line (bash) inside the running Docker container named postgres-source-1 with root privileges.
 
+> sudo docker exec -it  postgres-source-1 /bin/bash
 
+Step 2: Logs into the PostgreSQL database console using the default superuser account named postgres.
 
-# Steps to create sink PosgreeSQL tables:
+> psql -U postgres
 
-1. Access sink PostgreSQL container
+Step 3: A PostgreSQL meta-command that lists all existing tables in the current database.
 
-sudo docker exec -it  postgres-sink /bin/bash
+> \dt
 
-psql -U postgres
+Step 4: Creates a new table named users with three columns: user_id (integer primary key), first_name, and last_name (text up to 200 characters).
 
-2. Create Users table
+> CREATE TABLE users(user_id INTEGER, first_name VARCHAR(200), last_name VARCHAR(200), PRIMARY KEY (user_id));
 
-CREATE TABLE users(user_id INTEGER, first_name VARCHAR(200), last_name VARCHAR(200), PRIMARY KEY (user_id));
+Step 5: Adds individual record rows into the users table (inserting user ID 1 for 'bao nguyen' and user ID 2 for 'john brown').
 
-3. Create Wages table 
+> INSERT INTO users VALUES(1, 'bao', 'nguyen');
+> INSERT INTO users VALUES(2, 'john', 'brown');
 
-CREATE TABLE wages(user_id INTEGER, wage integer, PRIMARY KEY (user_id));
+## Launch Kafka Connect
 
-4. Create User_Wages table 
+This command launches Kafka Connect in standalone mode inside a running Docker container to stream data continuously from PostgreSQL to Snowflake.
 
-CREATE TABLE user_wages(user_id INTEGER, full_name VARCHAR(200), wage integer, PRIMARY KEY (user_id));
+> sudo docker exec -it connect connect-standalone \
+>   /etc/kafka-connect/connect-standalone.properties \
+>   /etc/kafka-connect/connect-postgres-source.properties \
+>   /etc/kafka-connect/connect-snowflake-sink.properties
 
+* sudo docker exec -it connect — Opens an interactive session in the running Docker container named connect.
+* connect-standalone — Runs the Kafka Connect engine in single-worker mode (useful for development/testing).
+* /etc/kafka-connect/connect-standalone.properties — Specifies the core Kafka Connect configuration (Kafka broker address, key/value converters).
+* /etc/kafka-connect/connect-postgres-source.properties — Configures the Source Connector (Debezium) to capture data changes from PostgreSQL.
+* /etc/kafka-connect/connect-snowflake-sink.properties — Configures the Sink Connector to take those changes from Kafka and write them into Snowflake.
 
+## Check Snowflake
 
-# Steps to create source Kafka topics:
-
-1. Access Kafka container
-
-sudo docker exec -t -i kafka /bin/bash
-
-2. Start Kafka standalone cluster
-
-cd /bin
-
-connect-standalone /config/connect-standalone.properties /config/connect-postgres-source.properties /config/connect-postgres-sink-users.properties /config/connect-postgres-sink-wages.properties /config/connect-postgres-sink-user-wages.properties
-
-3. Check source Kafka topics
-
-kafka-topics --list --bootstrap-server localhost:9092
-
-
-# Steps to create kSQL streams:
-
-1. Access kSQL client
-
-sudo docker-compose exec ksqldb-cli ksql http://ksqldb-server:8088
-
-2. Create kSQL stream for users
-
-CREATE STREAM stream_users (
-schema varchar, 
-payload STRUCT<
-	before varchar,
-	after STRUCT<
-		user_id int,
-		first_name varchar,
-		last_name varchar
-	>,
-	source varchar,
-	op varchar,
-	ts_ms bigint
->
-)
-WITH (kafka_topic='localhost.public.users', value_format='JSON');
-
-3. Create kSQL stream for wages
-
-CREATE STREAM stream_wages (
-schema varchar, 
-payload STRUCT<
-	before varchar,
-	after STRUCT<
-		user_id int,
-		wage bigint
-	>,
-	source varchar,
-	op varchar,
-	ts_ms bigint
->
-)
-WITH (kafka_topic='localhost.public.wages', value_format='JSON');
-
-4. Create kSQL stream for user_wages
-
-CREATE STREAM stream_user_wages 
-WITH (KAFKA_TOPIC='sink_database.user_wages', value_format='KAFKA', PARTITIONS=1, REPLICAS=1) 
-AS 
-SELECT 
-'{"schema":{"type":"struct","fields":[{"type":"int32","optional":false,"field":"user_id"}],"optional":false,"name":"sink_database.user_wages_1.Key"},"payload":{"user_id":' + CAST(stream_users.payload->after->user_id AS VARCHAR) + '}}' as key,
-'{"schema":{"type":"struct","fields":[{"type":"struct","fields":[{"type":"int32","optional":false,"field":"user_id"},{"type":"string","optional":true,"field":"full_name"},{"type":"int32","optional":true,"field":"wage"}],"optional":true,"name":"sink_database.user_wages_1.Value","field":"before"},{"type":"struct","fields":[{"type":"int32","optional":false,"field":"user_id"},{"type":"string","optional":true,"field":"full_name"},{"type":"int32","optional":true,"field":"wage"}],"optional":true,"name":"sink_database.user_wages_1.Value","field":"after"},{"type":"struct","fields":[{"type":"string","optional":false,"field":"version"},{"type":"string","optional":false,"field":"connector"},{"type":"string","optional":false,"field":"name"},{"type":"int64","optional":false,"field":"ts_ms"},{"type":"string","optional":true,"name":"io.debezium.data.Enum","version":1,"parameters":{"allowed":"true,last,false"},"default":"false","field":"snapshot"},{"type":"string","optional":false,"field":"db"},{"type":"string","optional":false,"field":"schema"},{"type":"string","optional":false,"field":"table"},{"type":"int64","optional":true,"field":"txId"},{"type":"int64","optional":true,"field":"lsn"},{"type":"int64","optional":true,"field":"xmin"}],"optional":false,"name":"io.debezium.connector.postgresql.Source","field":"source"},{"type":"string","optional":false,"field":"op"},{"type":"int64","optional":true,"field":"ts_ms"}],"optional":false,"name":"sink_database.user_wages_1.Envelope"},"payload":{"before":null,"after":{"user_id":' + CAST(stream_users.payload->after->user_id AS VARCHAR) 
-+ ',"full_name":"' + stream_users.payload->after->first_name + ' ' + stream_users.payload->after->last_name 
-+ '","wage":' + CAST(stream_wages.payload->after->wage AS VARCHAR) 
-+ '},"source":{"version":"0.10.0.Final","connector":"postgresql","name":"localhost","ts_ms":1682324643158,"snapshot":"false","db":"postgres","schema":"public","table":"user_wages","txId":831,"lsn":23268184,"xmin":null},"op":"c","ts_ms":1682324669819}}'
-FROM stream_users 
-INNER JOIN stream_wages 
-WITHIN 1 HOURS GRACE PERIOD 15 MINUTES 
-ON stream_users.payload->after->user_id = stream_wages.payload->after->user_id
-PARTITION BY '{"schema":{"type":"struct","fields":[{"type":"int32","optional":false,"field":"user_id"}],"optional":false,"name":"sink_database.user_wages_1.Key"},"payload":{"user_id":' + CAST(stream_users.payload->after->user_id AS VARCHAR) + '}}'
-;
-
-
-# Steps to test the context 1:
-
-1. Test case of "insert"
-
-Access sink PostgreSQL container and check if a record with "user_id = 1" is created in Users and Wages table
-
-select * from Users;
-
-select * from Wages;
-
-2. Test case of "update"
-
-Access source PostgreSQL container and update the record with "user_id = 1"
-
-UPDATE users SET first_name = 'first 1 updated' WHERE user_id = 1;
-
-UPDATE wages SET wage = 1000 + 1 WHERE user_id = 1;
-
-Access sink PostgreSQL container and check if the record with "user_id = 1" is updated
-
-select * from Users;
-
-select * from Wages;
-
-3. Test case of "delete"
-
-Access source PostgreSQL container and delete the record with "user_id = 1"
-
-DELETE FROM users WHERE user_id = 1;
-
-DELETE FROM wages WHERE user_id = 1;
-
-Access sink PostgreSQL container and check if the record with "user_id = 1" is deleted
-
-select * from Users;
-
-select * from Wages;
-
-
-
-# Steps to test the context 2:
-
-1. Test case of "insert"
-
-Access source PostgreSQL container and insert a record with "user_id = 2"
-
-INSERT INTO users VALUES(2, 'first 2', 'last 2');
-
-INSERT INTO wages VALUES(2, '2000');
-
-Access sink PostgreSQL container and check if a record with "user_id = 1" is created in User_Wages table
-
-select * from user_wages;
-
-2. Test case of "update"
-
-Access source PostgreSQL container and update the record with "user_id = 2"
-
-UPDATE users SET first_name = 'first 2 updated' WHERE user_id = 2;
-
-UPDATE wages SET wage = 2000 + 1 WHERE user_id = 2;
-
-Access sink PostgreSQL container and check if the record with "user_id = 2" is updated
-
-select * from user_wages;
-
-3. Test case of "delete"
-
-Access source PostgreSQL container and delete the record with "user_id = 2"
-
-DELETE FROM users WHERE user_id = 2;
-
-DELETE FROM wages WHERE user_id = 2;
-
-Access sink PostgreSQL container and check if the record with "user_id = 2" is deleted
-
-select * from user_wages;
-
+<img width="707" height="164" alt="image" src="https://github.com/user-attachments/assets/b6b43c28-08d4-4a24-8f08-9781af8f7bbb" />
